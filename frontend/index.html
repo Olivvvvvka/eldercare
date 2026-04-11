@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ЗаботаОнлайн — Вход</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<style>
+.auth-wrap { min-height:100vh; display:flex; }
+.auth-left  { flex:1; background:var(--primary); display:flex; flex-direction:column;
+               justify-content:center; padding:60px; color:#fff; }
+.auth-left h1 { color:#fff; font-size:2.4rem; margin-bottom:16px; }
+.auth-left p  { color:#fff; font-size:1.1rem; line-height:1.8; margin-bottom:12px; }
+.auth-right { width:480px; background:#fff; display:flex; flex-direction:column;
+               justify-content:center; padding:56px 48px; box-shadow:var(--shadow-lg); }
+.tabs { display:flex; border:2px solid var(--border); border-radius:var(--radius-sm); overflow:hidden; margin-bottom:28px; }
+.tab  { flex:1; padding:12px; border:none; cursor:pointer; font-family:var(--font);
+         font-size:1rem; font-weight:600; background:transparent; color:var(--text-muted); transition:all .2s; }
+.tab.active { background:var(--primary); color:#fff; }
+.section { display:none; } .section.show { display:block; }
+.logo { font-size:1.8rem; font-weight:700; color:var(--primary); margin-bottom:6px; }
+.sub  { color:var(--text-muted); margin-bottom:32px; font-size:0.95rem; }
+.demo-btns { display:flex; flex-direction:column; gap:8px; margin-top:20px; }
+.demo-btns button { padding:10px; border-radius:var(--radius-sm); border:2px solid var(--border);
+  background:#fff; cursor:pointer; font-family:var(--font); font-size:0.95rem; transition:all .2s; }
+.demo-btns button:hover { border-color:var(--primary); background:var(--success-light); }
+.patient-fields { display:none; }
+@media(max-width:860px){ .auth-left{display:none} .auth-right{width:100%;box-shadow:none} }
+</style>
+</head>
+<body>
+<div class="auth-wrap">
+  <div class="auth-left">
+    <div style="font-size:3rem;margin-bottom:16px">💚</div>
+    <h1>ЗаботаОнлайн</h1>
+    <p>Единый сервис координации ухода за пожилыми родственниками.</p>
+    <p>Дневник здоровья, контроль лекарств и связь с врачом — в одном месте.</p>
+  </div>
+  <div class="auth-right">
+    <div class="logo">💚 ЗаботаОнлайн</div>
+    <div class="sub">Платформа ухода за пожилыми</div>
+    <div id="alerts"></div>
+    <div class="tabs">
+      <button class="tab active" onclick="showTab('login')">Войти</button>
+      <button class="tab" onclick="showTab('register')">Регистрация</button>
+    </div>
+
+    <!-- LOGIN -->
+    <div class="section show" id="tab-login">
+      <div class="form-group">
+        <label class="form-label">Email</label>
+        <input type="email" id="l-email" class="form-input" placeholder="example@mail.ru">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Пароль</label>
+        <input type="password" id="l-pass" class="form-input" placeholder="Пароль">
+      </div>
+      <button class="btn btn-primary btn-full btn-lg" onclick="doLogin()">Войти в систему</button>
+      <div class="demo-btns">
+        <p style="text-align:center;color:var(--text-muted);font-size:0.9rem;margin:12px 0 4px">Тестовый вход</p>
+        <button onclick="demoLogin('patient@test.com')">👴 Войти как Пациент</button>
+        <button onclick="demoLogin('relative@test.com')">👨‍👩‍👧 Войти как Родственник</button>
+        <button onclick="demoLogin('doctor@test.com')">🩺 Войти как Врач</button>
+      </div>
+    </div>
+
+    <!-- REGISTER -->
+    <div class="section" id="tab-register">
+      <div class="form-group">
+        <label class="form-label">Роль</label>
+        <select id="r-role" class="form-select" onchange="togglePF()">
+          <option value="patient">👴 Пациент</option>
+          <option value="relative">👨‍👩‍👧 Родственник</option>
+          <option value="doctor">🩺 Врач</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Полное имя *</label>
+        <input type="text" id="r-name" class="form-input" placeholder="Иванов Иван Иванович">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Email *</label>
+        <input type="email" id="r-email" class="form-input" placeholder="example@mail.ru">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Пароль (не менее 6 символов) *</label>
+        <input type="password" id="r-pass" class="form-input" placeholder="Придумайте пароль">
+      </div>
+      <!-- Поля только для пациента -->
+      <div class="patient-fields" id="pf">
+        <div class="form-group">
+          <label class="form-label">Дата рождения</label>
+          <input type="date" id="r-birth" class="form-input">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Обычное давление (ваша норма)</label>
+          <div style="display:flex;align-items:center;gap:8px">
+            <input type="number" id="r-sys" class="form-input" value="120" min="80" max="180" style="text-align:center">
+            <span style="font-size:1.4rem;color:var(--text-muted)">/</span>
+            <input type="number" id="r-dia" class="form-input" value="80" min="50" max="120" style="text-align:center">
+          </div>
+          <p class="form-hint">Система будет сравнивать новые показатели с вашей нормой</p>
+        </div>
+      </div>
+      <button class="btn btn-primary btn-full btn-lg" onclick="doRegister()">Зарегистрироваться</button>
+    </div>
+  </div>
+</div>
+<script src="js/api.js"></script>
+<script>
+// Если уже залогинен — редирект
+const urlP = new URLSearchParams(location.search);
+if (Store.loggedIn() && urlP.get('out') !== '1') redirect(Store.role());
+
+function showTab(t) {
+  document.querySelectorAll('.tab').forEach((b,i) => b.classList.toggle('active', (t==='login'&&i===0)||(t==='register'&&i===1)));
+  document.getElementById('tab-login').classList.toggle('show', t==='login');
+  document.getElementById('tab-register').classList.toggle('show', t==='register');
+}
+
+function togglePF() {
+  document.getElementById('pf').style.display = document.getElementById('r-role').value === 'patient' ? 'block' : 'none';
+}
+
+async function doLogin() {
+  const email = document.getElementById('l-email').value.trim();
+  const pass  = document.getElementById('l-pass').value;
+  if (!email||!pass) { toast('Введите email и пароль','warning'); return; }
+  try {
+    const d = await Api.login(email, pass);
+    Store.save(d);
+    redirect(d.role);
+  } catch(e) { toast(e.message,'danger'); }
+}
+
+async function demoLogin(email) {
+  document.getElementById('l-email').value = email;
+  document.getElementById('l-pass').value  = 'demo123';
+  await doLogin();
+}
+
+async function doRegister() {
+  const role  = document.getElementById('r-role').value;
+  const name  = document.getElementById('r-name').value.trim();
+  const email = document.getElementById('r-email').value.trim();
+  const pass  = document.getElementById('r-pass').value;
+  if (!name||!email||!pass) { toast('Заполните обязательные поля','warning'); return; }
+  try {
+    const d = await Api.register({
+      role, full_name:name, email, password:pass,
+      birth_date:         document.getElementById('r-birth')?.value || '',
+      normal_systolic:  parseInt(document.getElementById('r-sys')?.value  || '120'),
+      normal_diastolic: parseInt(document.getElementById('r-dia')?.value  || '80'),
+    });
+    Store.save(d);
+    redirect(d.role);
+  } catch(e) { toast(e.message,'danger'); }
+}
+
+function redirect(role) {
+  const p = {patient:'patient.html', relative:'relative.html', doctor:'doctor.html'};
+  location.href = p[role] || 'patient.html';
+}
+
+document.addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
+</script>
+</body></html>

@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Настройки — ЗаботаОнлайн</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<style>
+.page-header { background:linear-gradient(135deg,var(--primary),var(--primary-light));
+  padding:24px 0;margin-bottom:28px; }
+.page-header h1 { color:#fff;font-size:1.6rem;margin-bottom:4px; }
+.page-header p  { color:#fff;opacity:.85;margin:0;font-size:.9rem; }
+.avatar { width:80px;height:80px;border-radius:50%;background:var(--primary);
+  display:flex;align-items:center;justify-content:center;font-size:2.5rem;
+  margin:0 auto 16px;flex-shrink:0; }
+.role-tag { display:inline-block;padding:4px 14px;border-radius:20px;
+  background:var(--primary);color:#fff;font-size:.85rem;font-weight:600;margin-bottom:20px; }
+.section-title { font-size:1.1rem;font-weight:700;margin-bottom:16px;
+  padding-bottom:10px;border-bottom:2px solid var(--border);color:var(--text-primary); }
+.info-row { display:flex;justify-content:space-between;align-items:center;
+  padding:12px 0;border-bottom:1px solid var(--border);font-size:.95rem; }
+.info-label { color:var(--text-muted);font-weight:500; }
+.info-value { font-weight:600; }
+.invite-code { font-family:monospace;font-size:1.4rem;font-weight:700;color:var(--primary);
+  background:var(--success-light);padding:12px 20px;border-radius:var(--radius-sm);
+  text-align:center;border:2px dashed var(--primary);margin:12px 0;letter-spacing:1px; }
+</style>
+</head>
+<body>
+<div id="nav"></div>
+
+<div class="page-header">
+  <div class="container">
+    <h1>⚙️ Настройки профиля</h1>
+    <p>Управление личными данными и параметрами аккаунта</p>
+  </div>
+</div>
+
+<main class="container" style="padding-bottom:40px">
+  <div style="max-width:640px;margin:0 auto">
+
+    <!-- Профиль -->
+    <div class="card mb-3" id="profile-card">
+      <div style="text-align:center;margin-bottom:24px">
+        <div class="avatar" id="av-icon">👤</div>
+        <div style="font-size:1.3rem;font-weight:700" id="disp-name">Загрузка...</div>
+        <div class="role-tag" id="disp-role">—</div>
+      </div>
+      <div id="info-section"></div>
+    </div>
+
+    <!-- Редактирование -->
+    <div class="card mb-3">
+      <div class="section-title">✏️ Изменить данные</div>
+      <div class="form-group">
+        <label class="form-label">Полное имя</label>
+        <input type="text" id="e-name" class="form-input" placeholder="Имя Фамилия Отчество">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Телефон</label>
+        <input type="tel" id="e-phone" class="form-input" placeholder="+7-900-000-00-00">
+      </div>
+
+      <!-- Только для пациента -->
+      <div id="patient-fields" style="display:none">
+        <div class="form-group">
+          <label class="form-label">Дата рождения</label>
+          <input type="date" id="e-birth" class="form-input">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Моё нормальное давление</label>
+          <div style="display:flex;align-items:center;gap:10px">
+            <input type="number" id="e-sys" class="form-input" min="80" max="200" style="text-align:center">
+            <span style="font-size:1.5rem;color:var(--text-muted)">/</span>
+            <input type="number" id="e-dia" class="form-input" min="40" max="130" style="text-align:center">
+            <span style="white-space:nowrap;color:var(--text-muted);font-size:.9rem">мм рт. ст.</span>
+          </div>
+          <p class="form-hint">Система сравнивает новые показатели с этой нормой и подсвечивает отклонения</p>
+        </div>
+      </div>
+
+      <button class="btn btn-primary" onclick="saveProfile()">💾 Сохранить изменения</button>
+    </div>
+
+    <!-- Код приглашения (только пациент) -->
+    <div class="card mb-3" id="invite-section" style="display:none">
+      <div class="section-title">🔗 Код для приглашения</div>
+      <p style="color:var(--text-secondary);margin-bottom:12px">
+        Дайте этот код родственнику или врачу — они введут его и получат доступ к вашему дневнику.
+      </p>
+      <div class="invite-code" id="inv-code">—</div>
+      <button class="btn btn-outline btn-sm" onclick="copyCode()">📋 Скопировать код</button>
+    </div>
+
+    <!-- Смена пароля -->
+    <div class="card mb-3">
+      <div class="section-title">🔒 Сменить пароль</div>
+      <div class="form-group">
+        <label class="form-label">Новый пароль</label>
+        <input type="password" id="e-pass" class="form-input" placeholder="Не менее 6 символов">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Повторите пароль</label>
+        <input type="password" id="e-pass2" class="form-input" placeholder="Повторите пароль">
+      </div>
+      <button class="btn btn-outline" onclick="changePassword()">🔑 Сменить пароль</button>
+    </div>
+
+    <!-- Выход -->
+    <div class="card">
+      <div class="section-title">🚪 Выход из аккаунта</div>
+      <p style="color:var(--text-secondary);margin-bottom:16px">Вы будете перенаправлены на страницу входа.</p>
+      <button class="btn btn-danger" onclick="signOut()">Выйти из аккаунта</button>
+    </div>
+
+  </div>
+</main>
+
+<script src="js/api.js"></script>
+<script>
+if (!requireRole()) throw 0;
+const role = Store.role();
+document.getElementById('nav').innerHTML = navbar('settings');
+
+const avatars = {patient:'👴', relative:'👨‍👩‍👧', doctor:'🩺'};
+const labels  = {patient:'Пациент', relative:'Родственник', doctor:'Врач'};
+document.getElementById('av-icon').textContent   = avatars[role] || '👤';
+document.getElementById('disp-role').textContent = labels[role]  || role;
+
+if (role === 'patient') {
+  document.getElementById('patient-fields').style.display  = 'block';
+  document.getElementById('invite-section').style.display  = 'block';
+}
+
+// Загрузка профиля
+loadProfile();
+
+async function loadProfile() {
+  try {
+    const d = await Api.getProfile();
+    const u = d.user || {};
+    const p = d.patient || {};
+
+    document.getElementById('disp-name').textContent = u.full_name || '—';
+    document.getElementById('e-name').value  = u.full_name || '';
+    document.getElementById('e-phone').value = u.phone     || '';
+
+    // Инфо
+    const infoRows = [
+      {l:'Email', v: u.email || '—'},
+      {l:'Телефон', v: u.phone || '—'},
+      {l:'Роль', v: labels[u.role] || u.role},
+    ];
+
+    if (role === 'patient' && p) {
+      document.getElementById('e-birth').value = p.birth_date  || '';
+      document.getElementById('e-sys').value   = p.normal_systolic  || 120;
+      document.getElementById('e-dia').value   = p.normal_diastolic || 80;
+      document.getElementById('inv-code').textContent = p.id || '—';
+
+      infoRows.push(
+        {l:'Дата рождения', v: p.birth_date ? fmtDate(p.birth_date) : '—'},
+        {l:'Нормальное давление', v: p.normal_systolic ? `${p.normal_systolic}/${p.normal_diastolic} мм рт. ст.` : '—'},
+      );
+    }
+
+    document.getElementById('info-section').innerHTML = infoRows.map(r=>
+      `<div class="info-row"><span class="info-label">${r.l}</span><span class="info-value">${r.v}</span></div>`
+    ).join('');
+
+  } catch(e) { toast(e.message,'danger'); }
+}
+
+async function saveProfile() {
+  const name  = document.getElementById('e-name').value.trim();
+  const phone = document.getElementById('e-phone').value.trim();
+  if (!name) { toast('Введите имя','warning'); return; }
+
+  const payload = {full_name:name, phone};
+  if (role === 'patient') {
+    payload.birth_date        = document.getElementById('e-birth').value || null;
+    payload.normal_systolic   = parseInt(document.getElementById('e-sys').value)  || 120;
+    payload.normal_diastolic  = parseInt(document.getElementById('e-dia').value)  || 80;
+  }
+
+  try {
+    const r = await Api.updateProfile(payload);
+    if (r.token) {
+      localStorage.setItem('token', r.token);
+      localStorage.setItem('name',  r.name);
+    }
+    toast('✅ Профиль сохранён','success');
+    loadProfile();
+  } catch(e) { toast(e.message,'danger'); }
+}
+
+function copyCode() {
+  const code = document.getElementById('inv-code').textContent;
+  navigator.clipboard.writeText(code).then(()=>toast('Код скопирован ✅','success')).catch(()=>{
+    toast('Скопируйте вручную: ' + code,'info');
+  });
+}
+
+async function changePassword() {
+  const p1 = document.getElementById('e-pass').value;
+  const p2 = document.getElementById('e-pass2').value;
+  if (!p1) { toast('Введите новый пароль','warning'); return; }
+  if (p1.length < 6) { toast('❌ Пароль должен быть не менее 6 символов','danger'); return; }
+  if (p1 !== p2) { toast('❌ Пароли не совпадают — проверьте повторный ввод','danger'); return; }
+  // Визуально показываем что запрос отправляется
+  const btn = event.target;
+  btn.disabled = true; btn.textContent = 'Сохраняем...';
+  try {
+    await Api.updateProfile({full_name: Store.name(), password: p1});
+    toast('✅ Пароль успешно изменён','success');
+    document.getElementById('e-pass').value = '';
+    document.getElementById('e-pass2').value= '';
+  } catch(e) {
+    toast('❌ ' + e.message,'danger');
+  } finally {
+    btn.disabled = false; btn.textContent = '🔑 Сменить пароль';
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>История — ЗаботаОнлайн</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+.page-header { background:linear-gradient(135deg,var(--primary),var(--primary-light));
+  padding:24px 0;margin-bottom:24px;color:#fff; }
+.page-header h1 { color:#fff;font-size:1.6rem;margin-bottom:4px; }
+.page-header p  { color:#fff;opacity:.85;margin:0;font-size:.9rem; }
+.filter-bar { display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:20px;
+  background:#fff;padding:20px;border-radius:var(--radius);border:1px solid var(--border); }
+.filter-group { display:flex;flex-direction:column;gap:6px; }
+.filter-group label { font-size:.85rem;font-weight:600;color:var(--text-secondary); }
+.filter-group input, .filter-group select { padding:10px 14px;border:2px solid var(--border);
+  border-radius:var(--radius-sm);font-family:var(--font);font-size:.95rem;outline:none;transition:border .2s; }
+.filter-group input:focus, .filter-group select:focus { border-color:var(--primary); }
+.ftab { padding:8px 18px;border-radius:20px;border:2px solid var(--border);
+  cursor:pointer;font-size:.9rem;font-weight:600;background:#fff;color:var(--text-secondary);transition:all .2s; }
+.ftab.on { background:var(--primary);color:#fff;border-color:var(--primary); }
+.rec-card { padding:16px 20px;border:1px solid var(--border);border-radius:var(--radius-sm);
+  background:#fff;margin-bottom:10px;transition:box-shadow .2s; }
+.rec-card:hover { box-shadow:var(--shadow-md); }
+.rec-card.critical { border-left:4px solid var(--danger);background:var(--danger-light); }
+.rec-card.normal   { border-left:4px solid var(--primary); }
+.bp-big { font-size:1.4rem;font-weight:700;color:var(--primary); }
+.bp-big.crit { color:var(--danger); }
+.meta  { font-size:.82rem;color:var(--text-muted);margin-top:4px; }
+.note  { margin-top:8px;font-size:.95rem;color:var(--text-secondary);
+  padding:8px 12px;background:rgba(0,0,0,.04);border-radius:6px; }
+.summary-row { display:flex;gap:16px;flex-wrap:wrap;margin-bottom:20px; }
+.sum-box { flex:1;min-width:140px;background:#fff;border:1px solid var(--border);
+  border-radius:var(--radius);padding:16px;text-align:center; }
+.sum-val { font-size:1.8rem;font-weight:700;color:var(--primary); }
+.sum-lbl { font-size:.82rem;color:var(--text-muted);margin-top:2px; }
+.sum-box.danger .sum-val { color:var(--danger); }
+.sum-box.warning .sum-val { color:var(--warning); }
+.empty { text-align:center;padding:60px 20px;color:var(--text-muted); }
+.empty-ico { font-size:3.5rem;margin-bottom:12px; }
+</style>
+</head>
+<body>
+<div id="nav"></div>
+
+<div class="page-header">
+  <div class="container">
+    <h1>📊 История давления</h1>
+    <p id="ph-sub">Полный архив записей с фильтрами и поиском</p>
+  </div>
+</div>
+
+<main class="container" style="padding-bottom:40px">
+
+  <!-- Фильтры -->
+  <div class="filter-bar">
+    <div class="filter-group">
+      <label>С даты</label>
+      <input type="date" id="f-from" value="">
+    </div>
+    <div class="filter-group">
+      <label>По дату</label>
+      <input type="date" id="f-to" value="">
+    </div>
+    <div class="filter-group">
+      <label>Тип записей</label>
+      <select id="f-type">
+        <option value="all">Все записи</option>
+        <option value="critical">Только критические (>160)</option>
+        <option value="has_note">Только с жалобами</option>
+      </select>
+    </div>
+    <div style="display:flex;gap:8px;align-items:flex-end">
+      <button class="btn btn-primary" onclick="loadHistory()">🔍 Найти</button>
+      <button class="btn btn-outline" onclick="resetFilters()">Сбросить</button>
+    </div>
+  </div>
+
+  <!-- Быстрые периоды -->
+  <div style="display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap">
+    <button class="ftab on" onclick="setPreset(7,this)">7 дней</button>
+    <button class="ftab" onclick="setPreset(30,this)">30 дней</button>
+    <button class="ftab" onclick="setPreset(90,this)">3 месяца</button>
+    <button class="ftab" onclick="setPreset(180,this)">6 месяцев</button>
+  </div>
+
+  <!-- Сводка -->
+  <div class="summary-row" id="summary" style="display:none"></div>
+
+  <!-- Мини-график -->
+  <div class="card mb-3" id="chart-card" style="display:none">
+    <div style="font-weight:700;margin-bottom:12px">📈 Тренд за период</div>
+    <canvas id="hist-chart" height="80"></canvas>
+  </div>
+
+  <!-- Список -->
+  <div id="rec-list"></div>
+
+</main>
+
+<script src="js/api.js"></script>
+<script>
+if (!requireRole()) throw 0;
+document.getElementById('nav').innerHTML = navbar('history');
+
+// Пациент использует свой pid, родственник/врач — выбранного пациента
+const PID = Store.role() === 'patient' ? Store.pid() : Store.selPid();
+if (!PID) { toast('Сначала выберите пациента в разделе Наблюдение','warning'); }
+let histChart = null;
+
+// Дефолт — 7 дней
+const today = new Date().toISOString().split('T')[0];
+const week  = new Date(Date.now() - 7*864e5).toISOString().split('T')[0];
+document.getElementById('f-from').value = week;
+document.getElementById('f-to').value   = today;
+
+loadHistory();
+
+function setPreset(days, el) {
+  document.querySelectorAll('.ftab').forEach(b=>b.classList.remove('on'));
+  el.classList.add('on');
+  const from = new Date(Date.now() - days*864e5).toISOString().split('T')[0];
+  document.getElementById('f-from').value = from;
+  document.getElementById('f-to').value   = today;
+  loadHistory();
+}
+
+function resetFilters() {
+  document.getElementById('f-from').value = week;
+  document.getElementById('f-to').value   = today;
+  document.getElementById('f-type').value = 'all';
+  loadHistory();
+}
+
+async function loadHistory() {
+  const el   = document.getElementById('rec-list');
+  const sumEl= document.getElementById('summary');
+  const ccEl = document.getElementById('chart-card');
+  spin(el);
+  sumEl.style.display='none'; ccEl.style.display='none';
+
+  const from   = document.getElementById('f-from').value || week;
+  const to     = document.getElementById('f-to').value   || today;
+  const filter = document.getElementById('f-type').value;
+
+  try {
+    const rows = await Api.getHistory(PID, {from, to, filter});
+
+    document.getElementById('ph-sub').textContent =
+      `Показано записей: ${rows.length} • с ${from} по ${to}`;
+
+    if (!rows.length) {
+      el.innerHTML = `<div class="empty"><div class="empty-ico">📋</div>
+        <p>За выбранный период записей не найдено</p>
+        <p style="font-size:.85rem">Попробуйте изменить фильтры или расширить период</p></div>`;
+      return;
+    }
+
+    // Сводка
+    const withBP = rows.filter(r => r.systolic);
+    const crits  = rows.filter(r => r.is_critical).length;
+    const avgSys = withBP.length ? Math.round(withBP.reduce((s,r)=>s+r.systolic,0)/withBP.length) : null;
+    const avgDia = withBP.length ? Math.round(withBP.reduce((s,r)=>s+r.diastolic,0)/withBP.length) : null;
+    const maxSys = withBP.length ? Math.max(...withBP.map(r=>r.systolic)) : null;
+
+    sumEl.style.display = 'flex';
+    sumEl.innerHTML = [
+      {v:rows.length,          l:'Всего записей',       c:''},
+      {v:avgSys?`${avgSys}/${avgDia}`:'—', l:'Среднее давление', c: avgSys>150?'warning':''},
+      {v:maxSys||'—',          l:'Макс. систолическое', c: maxSys>160?'danger':''},
+      {v:crits,                l:'Критических эпизодов',c: crits>0?'danger':''},
+    ].map(x=>`<div class="sum-box ${x.c}"><div class="sum-val">${x.v}</div><div class="sum-lbl">${x.l}</div></div>`).join('');
+
+    // Мини-график
+    if (withBP.length > 1) {
+      ccEl.style.display = 'block';
+      const byDate = {};
+      withBP.forEach(r => {
+        const d = r.recorded_at.slice(0,10);
+        if (!byDate[d]) byDate[d] = {sys:[],dia:[]};
+        byDate[d].sys.push(r.systolic);
+        byDate[d].dia.push(r.diastolic);
+      });
+      const dates = Object.keys(byDate).sort();
+      const avgByDay = dates.map(d=>({
+        date:d,
+        sys: Math.round(byDate[d].sys.reduce((a,b)=>a+b)/byDate[d].sys.length),
+        dia: Math.round(byDate[d].dia.reduce((a,b)=>a+b)/byDate[d].dia.length),
+      }));
+
+      const ctx = document.getElementById('hist-chart').getContext('2d');
+      if (histChart) histChart.destroy();
+      histChart = new Chart(ctx, {type:'line', data:{
+        labels: avgByDay.map(d=>new Date(d.date).toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'})),
+        datasets:[
+          {label:'Систолическое',data:avgByDay.map(d=>d.sys),borderColor:'#D94F3D',backgroundColor:'rgba(217,79,61,.07)',tension:.4,fill:true,borderWidth:2,pointRadius:3},
+          {label:'Диастолическое',data:avgByDay.map(d=>d.dia),borderColor:'#2E7D6E',backgroundColor:'rgba(46,125,110,.07)',tension:.4,fill:true,borderWidth:2,pointRadius:3},
+        ]
+      }, options:{responsive:true,plugins:{legend:{position:'bottom'}},
+        scales:{y:{min:50,max:210,grid:{color:'rgba(0,0,0,.04)'}},x:{grid:{display:false}}}}});
+    }
+
+    // Список записей
+    el.innerHTML = rows.map(r => {
+      const crit = r.is_critical;
+      const bp   = r.systolic ? `${r.systolic}/${r.diastolic}` : '—';
+      const time = r.recorded_at ? fmtDT(r.recorded_at) : '—';
+      return `<div class="rec-card ${crit?'critical':'normal'}">
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <span class="bp-big ${crit?'crit':''}">🩸 ${bp} мм рт. ст.</span>
+          ${crit?'<span class="badge badge-danger">⚠️ Критично</span>':''}
+          ${r.pulse?`<span style="color:var(--text-muted);font-size:.9rem">Пульс: ${r.pulse} уд/мин</span>`:''}
+        </div>
+        <div class="meta">${time}${r.author?' • '+r.author:''}</div>
+        ${r.note?`<div class="note">💬 ${r.note}</div>`:''}
+      </div>`;
+    }).join('');
+
+  } catch(e) {
+    el.innerHTML = `<div class="alert alert-danger">❌ ${e.message}</div>`;
+  }
+}
+</script>
+</body>
+</html>

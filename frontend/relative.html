@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Наблюдение — ЗаботаОнлайн</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+.connect-box { border:2px solid var(--primary);border-radius:var(--radius);padding:24px;margin-bottom:24px;background:#fff; }
+.connect-box h3 { margin-bottom:12px; }
+.pat-banner { display:flex;align-items:center;gap:18px;padding:20px 24px;
+  background:linear-gradient(135deg,var(--primary),var(--primary-light));
+  color:#fff;border-radius:var(--radius);margin-bottom:20px; }
+.pat-ava { width:60px;height:60px;border-radius:50%;background:rgba(255,255,255,.25);
+  display:flex;align-items:center;justify-content:center;font-size:2rem;flex-shrink:0; }
+.pat-info h2 { color:#fff;margin-bottom:2px;font-size:1.3rem; }
+.pat-info p  { color:#fff;opacity:.9;font-size:.88rem;margin:0; }
+.ptab { padding:9px 18px;border-radius:20px;border:2px solid var(--border);cursor:pointer;
+  font-size:.9rem;font-weight:600;background:#fff;color:var(--text-secondary);transition:all .2s; }
+.ptab.on { background:var(--primary);color:#fff;border-color:var(--primary); }
+.adh-bar { height:12px;border-radius:8px;background:var(--border);overflow:hidden;margin-top:6px; }
+.adh-fill { height:100%;border-radius:8px;background:linear-gradient(90deg,var(--primary),var(--primary-light));transition:width .8s; }
+.ev-row { display:flex;align-items:flex-start;gap:12px;padding:13px 16px;
+  border-left:4px solid var(--border);background:#fff;border-radius:0 8px 8px 0;margin-bottom:8px; }
+.ev-row.critical { border-color:var(--danger);background:var(--danger-light); }
+.ev-row.normal   { border-color:var(--warning);background:var(--warning-light); }
+.ev-row.info     { border-color:var(--primary);background:var(--success-light); }
+</style>
+</head>
+<body>
+<div id="nav"></div>
+<main class="container" style="padding-top:24px;padding-bottom:40px">
+
+  <!-- Подключение к пациенту — ВСЕГДА ВИДНА -->
+  <div class="connect-box" id="cbox">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <h3 style="margin:0">🔗 Подключиться к пациенту</h3>
+      <button class="btn btn-ghost btn-sm" id="ctog" onclick="toggleConnect()">Свернуть</button>
+    </div>
+    <div id="cbody">
+      <p class="mb-2" style="color:var(--text-secondary)">Введите код пациента (он видит его по кнопке «Код для родственника»):</p>
+      <div style="display:flex;gap:10px;margin-bottom:12px">
+        <input type="text" id="ccode" class="form-input" placeholder="Код пациента..." style="font-size:1.05rem;font-family:monospace">
+        <button class="btn btn-primary" onclick="doConnect()" style="white-space:nowrap">Подключиться</button>
+      </div>
+      <div class="alert alert-info mb-0">
+        <span>ℹ️</span>
+        <span>Для тестового пациента введите код: <strong style="font-family:monospace;font-size:1.1rem">p-001</strong></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Список пациентов -->
+  <div id="pat-list"></div>
+
+  <!-- Данные -->
+  <div id="data-section" style="display:none">
+    <div class="pat-banner" id="pat-banner">
+      <div class="pat-ava">👴</div>
+      <div class="pat-info">
+        <h2 id="pat-name">—</h2>
+        <p id="pat-sub">Загрузка...</p>
+      </div>
+    </div>
+
+    <div id="crit-alerts"></div>
+
+    <div style="display:flex;gap:10px;margin-bottom:20px">
+      <button class="ptab on" onclick="setPeriod(7,this)">7 дней</button>
+      <button class="ptab" onclick="setPeriod(30,this)">30 дней</button>
+    </div>
+
+    <div class="stats-grid mb-3" id="sgrid"></div>
+
+    <div class="chart-container mb-3">
+      <div style="font-weight:700;margin-bottom:14px">📈 График давления</div>
+      <canvas id="bpc" height="110"></canvas>
+    </div>
+
+    <div class="card mb-3">
+      <div class="card-header"><span class="card-title">💊 Приверженность терапии</span></div>
+      <div id="adh-sec"></div>
+    </div>
+
+    <div class="card mb-3">
+      <div class="card-header"><span class="card-title">📅 Приверженность по неделям</span></div>
+      <canvas id="adh-chart" height="100"></canvas>
+      <div id="adh-chart-msg" style="text-align:center;padding:20px;color:var(--text-muted)"></div>
+    </div>
+
+    <div class="card mb-3">
+      <div class="card-header"><span class="card-title">🔔 Уведомления</span></div>
+      <div id="ev-sec"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><span class="card-title">💬 Написать сообщение пациенту</span></div>
+      <textarea id="cmsg" class="form-textarea" placeholder="Ваше сообщение..."></textarea>
+      <button class="btn btn-primary" style="margin-top:12px" onclick="sendMsg()">📨 Отправить пациенту</button>
+    </div>
+  </div>
+</main>
+
+<script src="js/api.js"></script>
+<script>
+if (!requireRole(['relative'])) throw 0;
+document.getElementById('nav').innerHTML = navbar('relative');
+
+let PID = Store.selPid();
+let chart = null;
+let period = 7;
+let connOpen = true;
+
+init();
+
+async function init() {
+  try {
+    const pats = await Api.myPatients();
+    if (pats && pats.length) {
+      renderPatList(pats);
+      if (!PID) PID = pats[0].id;
+      Store.set('sel_pid', PID);
+      const cur = pats.find(p=>p.id===PID) || pats[0];
+      selectPat(cur.id, cur.full_name);
+      loadAdhChart();
+    }
+  } catch(e) { toast('Ошибка: '+e.message,'danger'); }
+}
+
+function renderPatList(pats) {
+  document.getElementById('pat-list').innerHTML = `
+    <div class="card mb-3">
+      <div class="card-header"><span class="card-title">👥 Мои пациенты</span></div>
+      ${pats.map(p=>`
+        <div style="display:flex;align-items:center;gap:12px;padding:10px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;cursor:pointer" onclick="selectPat('${p.id}','${p.full_name}')">
+          <span style="font-size:1.4rem">👴</span>
+          <div style="flex:1">
+            <div style="font-weight:600">${p.full_name}</div>
+            <div style="font-size:.8rem;color:var(--text-muted);font-family:monospace">Код: ${p.id}</div>
+          </div>
+          <button class="btn btn-outline btn-sm">Открыть</button>
+        </div>`).join('')}
+    </div>`;
+}
+
+function selectPat(pid, name) {
+  PID = pid; Store.set('sel_pid', pid);
+  document.getElementById('pat-name').textContent = name;
+  document.getElementById('data-section').style.display = 'block';
+  // Сворачиваем форму подключения
+  document.getElementById('cbody').style.display = 'none';
+  document.getElementById('ctog').textContent = '+ Добавить пациента';
+  connOpen = false;
+  loadAll();
+}
+
+function toggleConnect() {
+  connOpen = !connOpen;
+  document.getElementById('cbody').style.display = connOpen ? 'block' : 'none';
+  document.getElementById('ctog').textContent    = connOpen ? 'Свернуть' : '+ Добавить пациента';
+}
+
+async function doConnect() {
+  const code = document.getElementById('ccode').value.trim();
+  if (!code) { toast('Введите код пациента','warning'); return; }
+  try {
+    const r = await Api.connectPatient(code);
+    toast('✅ Подключено: '+r.patient_name,'success');
+    document.getElementById('ccode').value = '';
+    const pats = await Api.myPatients();
+    renderPatList(pats);
+    selectPat(r.patient_id, r.patient_name);
+  } catch(e) { toast(e.message,'danger'); }
+}
+
+function setPeriod(d, el) {
+  period = d;
+  document.querySelectorAll('.ptab').forEach(b=>b.classList.remove('on'));
+  el.classList.add('on');
+  loadAll();
+}
+
+async function loadAll() {
+  if (!PID) return;
+  await Promise.all([loadStats(), loadEvents()]);
+}
+
+async function loadStats() {
+  const sg = document.getElementById('sgrid');
+  sg.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+  try {
+    const s   = await Api.getStats(PID, period);
+    const bp  = s.bp  || {};
+    const adh = s.adherence || {};
+    const pct = adh.pct;
+
+    // Patient subtitle
+    if (s.patient) {
+      const norm = s.patient.normal_systolic ? ` • Норма: ${s.patient.normal_systolic}/${s.patient.normal_diastolic}` : '';
+      const birth= s.patient.birth_date ? ` • Д.р.: ${s.patient.birth_date}` : '';
+      document.getElementById('pat-sub').textContent = `Наблюдение ${period} дн.${norm}${birth}`;
+    }
+
+    // Stats grid
+    sg.innerHTML = [
+      {v:`${bp.avg_sys||'—'}/${bp.avg_dia||'—'}`, l:'Среднее давление', c: bp.avg_sys>150?'warning':''},
+      {v:bp.max_sys||'—', l:'Макс. систолическое', c: bp.max_sys>160?'danger':''},
+      {v:pct!==null?pct+'%':'—', l:'Приверженность', c: pct<70?'danger':pct<85?'warning':''},
+      {v:bp.critical||0, l:'Критических эпизодов', c: bp.critical>0?'danger':''},
+    ].map(x=>`<div class="stat-card ${x.c}"><div class="stat-value">${x.v}</div><div class="stat-label">${x.l}</div></div>`).join('');
+
+    // Adherence
+    document.getElementById('adh-sec').innerHTML = `
+      <div style="margin-bottom:12px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+          <span style="font-size:1.3rem;font-weight:700">${pct!==null?pct+'%':'—'}</span>
+          <span style="color:var(--text-muted)">принято за ${period} дней</span>
+        </div>
+        <div class="adh-bar"><div class="adh-fill" style="width:${pct||0}%"></div></div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <span class="badge badge-success">✅ Принято: ${adh.taken||0}</span>
+        <span class="badge badge-danger">❌ Пропущено: ${adh.missed||0}</span>
+        ${adh.overdue>0?`<span class="badge badge-warning">⏳ Просрочено: ${adh.overdue}</span>`:''}
+      </div>`;
+
+    drawChart(s.trend||[], s.patient);
+  } catch(e) {
+    document.getElementById('sgrid').innerHTML = `<div class="alert alert-danger" style="grid-column:1/-1">❌ ${e.message}</div>`;
+  }
+}
+
+function drawChart(trend, pat) {
+  const ctx = document.getElementById('bpc').getContext('2d');
+  if (chart) chart.destroy();
+  if (!trend.length) { ctx.canvas.parentElement.insertAdjacentHTML('beforeend','<p style="text-align:center;color:var(--text-muted);padding:20px">Нет записей за период</p>'); return; }
+  const ds = [
+    {label:'Систолическое',data:trend.map(t=>t.sys),borderColor:'#D94F3D',backgroundColor:'rgba(217,79,61,.08)',tension:.4,fill:true,borderWidth:2.5,pointRadius:4},
+    {label:'Диастолическое',data:trend.map(t=>t.dia),borderColor:'#2E7D6E',backgroundColor:'rgba(46,125,110,.08)',tension:.4,fill:true,borderWidth:2.5,pointRadius:4},
+  ];
+  if (pat?.normal_systolic) {
+    ds.push({label:'Норма систол.',data:trend.map(()=>pat.normal_systolic),borderColor:'#E6A817',borderDash:[5,5],borderWidth:1.5,pointRadius:0,fill:false});
+  }
+  chart = new Chart(ctx, {type:'line',
+    data:{labels:trend.map(t=>new Date(t.date).toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'})),datasets:ds},
+    options:{responsive:true,plugins:{legend:{position:'bottom'},tooltip:{mode:'index',intersect:false}},
+      scales:{y:{min:50,max:220,grid:{color:'rgba(0,0,0,.04)'}},x:{grid:{display:false}}}}});
+}
+
+async function loadEvents() {
+  const el   = document.getElementById('ev-sec');
+  const crit = document.getElementById('crit-alerts');
+  spin(el);
+  try {
+    const evs   = await Api.getEvents(PID);
+    const crits = evs.filter(e=>e.severity==='critical'&&e.status==='new');
+    crit.innerHTML = crits.map(e=>`
+      <div class="alert alert-danger mb-2" style="display:flex;align-items:flex-start;gap:12px">
+        <span>🚨</span>
+        <div style="flex:1"><strong>${e.message}</strong><div style="font-size:.8rem;opacity:.8">${fmtDT(e.created_at)}</div></div>
+        <button class="btn btn-sm" style="background:var(--danger);color:#fff;flex-shrink:0" onclick="markSeen('${e.id}',this)">Вижу ✓</button>
+      </div>`).join('');
+
+    if (!evs.length) { el.innerHTML='<div style="text-align:center;padding:24px;color:var(--text-muted)">🔔 Уведомлений нет</div>'; return; }
+    const ico={missed_dose:'💊',critical_bp:'🚨',doctor_recommendation:'🩺',urgent_visit:'🏥',bp_trend:'📈',low_adherence:'⚠️'};
+    el.innerHTML = evs.slice(0,20).map(ev=>`
+      <div class="ev-row ${ev.severity}" id="evr-${ev.id}">
+        <span style="font-size:1.2rem">${ico[ev.type]||'🔔'}</span>
+        <div style="flex:1"><div style="font-weight:600;font-size:.95rem">${ev.message}</div>
+        <div style="font-size:.8rem;color:var(--text-muted)">${fmtDT(ev.created_at)}</div></div>
+        <span class="badge badge-${ev.status==='new'?'danger':'neutral'}">${ev.status==='new'?'Новое':'Просмотрено'}</span>
+      </div>`).join('');
+  } catch(e) { el.innerHTML=`<div class="alert alert-danger">❌ ${e.message}</div>`; }
+}
+
+async function markSeen(eid, btn) {
+  try {
+    await Api.resolveEvent(eid);
+    if (btn) btn.closest('.alert')?.remove();
+    document.getElementById('evr-'+eid)?.remove();
+  } catch(e) { toast(e.message,'danger'); }
+}
+
+async function loadAdhChart() {
+  if (!PID) return;
+  const msgEl = document.getElementById('adh-chart-msg');
+  try {
+    const weeks = await Api.adhWeeks(PID, 8);
+    const hasData = weeks.some(w => w.total > 0);
+    if (!hasData) { msgEl.textContent = 'Нет данных о приёме лекарств'; return; }
+    msgEl.textContent = '';
+    const ctx = document.getElementById('adh-chart').getContext('2d');
+    new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: weeks.map(w => w.label),
+        datasets: [{
+          label: '% приверженности',
+          data: weeks.map(w => w.pct),
+          backgroundColor: weeks.map(w => {
+            if (w.pct === null) return 'rgba(200,200,200,0.4)';
+            if (w.pct >= 90) return 'rgba(46,125,110,0.8)';
+            if (w.pct >= 70) return 'rgba(230,168,23,0.8)';
+            return 'rgba(217,79,61,0.8)';
+          }),
+          borderRadius: 6,
+          borderSkipped: false,
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: ctx => ctx.raw !== null ? ctx.raw + '%' : 'Нет данных' } }
+        },
+        scales: {
+          y: { min: 0, max: 100, ticks: { callback: v => v + '%' }, grid: { color: 'rgba(0,0,0,.04)' } },
+          x: { grid: { display: false } }
+        }
+      }
+    });
+  } catch(e) { msgEl.textContent = 'Ошибка загрузки данных'; }
+}
+
+async function sendMsg() {
+  const txt = document.getElementById('cmsg').value.trim();
+  if (!txt) { toast('Введите текст','warning'); return; }
+  try {
+    await Api.addComment(PID, {content:txt, type:'comment', visibility:'patient_only'});
+    toast('✅ Сообщение отправлено пациенту','success');
+    document.getElementById('cmsg').value='';
+  } catch(e) { toast(e.message,'danger'); }
+}
+</script>
+</body></html>
