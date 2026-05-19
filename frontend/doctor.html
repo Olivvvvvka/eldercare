@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Дашборд врача — ЗаботаОнлайн</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+.doc-header { background:linear-gradient(135deg,#1b5e50,#2e7d6e);padding:24px 0;margin-bottom:28px; }
+.doc-header h1 { color:#fff;font-size:1.6rem;margin-bottom:4px; }
+.doc-header p  { color:#fff;opacity:.85;margin:0; }
+.connect-box { border:2px solid var(--primary);border-radius:var(--radius);padding:20px;margin-bottom:24px;background:#fff; }
+.ptab { padding:9px 18px;border-radius:20px;border:2px solid var(--border);cursor:pointer;
+  font-size:.9rem;font-weight:600;background:#fff;color:var(--text-secondary);transition:all .2s; }
+.ptab.on { background:var(--primary);color:#fff;border-color:var(--primary); }
+.rec-type { padding:8px 14px;border-radius:20px;border:2px solid var(--border);background:#fff;
+  cursor:pointer;font-size:.9rem;font-weight:600;color:var(--text-secondary);transition:all .2s; }
+.rec-type.on-info   { background:var(--success-light);border-color:var(--primary);color:var(--primary); }
+.rec-type.on-normal { background:var(--warning-light);border-color:var(--warning);color:#7a5500; }
+.rec-type.on-critical{ background:var(--danger-light);border-color:var(--danger);color:var(--danger); }
+.comm-item { padding:12px 16px;border-left:3px solid var(--border);margin-bottom:8px;background:#fff;border-radius:0 8px 8px 0; }
+.comm-item.recommendation { border-color:var(--primary); }
+.comm-item.urgent_visit   { border-color:var(--danger); }
+</style>
+</head>
+<body>
+<div id="nav"></div>
+
+<div class="doc-header">
+  <div class="container" style="display:flex;align-items:center;justify-content:space-between;gap:16px">
+    <div>
+      <h1>🩺 Дашборд врача</h1>
+      <p id="doc-name">Загрузка...</p>
+    </div>
+    <select id="period-sel" class="form-select" style="width:auto" onchange="loadAll()">
+      <option value="7">7 дней</option>
+      <option value="30" selected>30 дней</option>
+    </select>
+  </div>
+</div>
+
+<main class="container" style="padding-bottom:40px">
+
+  <!-- Подключение -->
+  <div class="connect-box" id="cbox">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <strong>🔗 Подключиться к пациенту</strong>
+      <button class="btn btn-ghost btn-sm" id="ctog" onclick="toggleConnect()">Свернуть</button>
+    </div>
+    <div id="cbody">
+      <div style="display:flex;gap:10px;margin-bottom:10px">
+        <input type="text" id="ccode" class="form-input" placeholder="Код пациента..." style="font-family:monospace">
+        <button class="btn btn-primary" onclick="doConnect()" style="white-space:nowrap">Подключиться</button>
+      </div>
+      <p style="font-size:.85rem;color:var(--text-muted)">Тестовый код: <strong style="font-family:monospace">p-001</strong></p>
+    </div>
+  </div>
+
+  <!-- Список пациентов -->
+  <div id="pat-list"></div>
+
+  <div id="data-sec" style="display:none">
+    <div id="crit-alerts"></div>
+
+    <!-- Экспорт -->
+    <div style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap">
+      <button class="btn btn-outline btn-sm" onclick="exportPDF()">📄 Скачать PDF-отчёт</button>
+      <button class="btn btn-outline btn-sm" onclick="exportExcel()">📊 Экспорт в Excel</button>
+      <button class="btn btn-outline btn-sm" onclick="printReport()">🖨️ Распечатать</button>
+      <a href="analytics.html" onclick="this.href='analytics.html'+Store.tabHash()" class="btn btn-outline btn-sm">🔬 Аналитика и прогноз</a>
+      <a href="audit.html" onclick="this.href='audit.html'+Store.tabHash()" class="btn btn-outline btn-sm">📋 Журнал аудита</a>
+    </div>
+
+    <div class="stats-grid mb-3" id="sgrid"></div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:24px">
+      <div class="chart-container">
+        <div style="font-weight:700;margin-bottom:14px">📈 Динамика давления</div>
+        <canvas id="bpc" height="140"></canvas>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">📝 Жалобы пациента</span></div>
+        <div id="complaints" style="max-height:260px;overflow-y:auto"></div>
+      </div>
+    </div>
+
+    <div class="card mb-3">
+      <div class="card-header"><span class="card-title">💬 Мои рекомендации</span></div>
+      <!-- Реал-тайм индикатор -->
+      <div id="rt-indicator" style="display:flex;align-items:center;gap:8px;margin-bottom:12px;font-size:.85rem;color:var(--text-muted)">
+        <div id="rt-dot" style="width:8px;height:8px;border-radius:50%;background:#ccc;flex-shrink:0"></div>
+        <span id="rt-status">Подключение к реал-тайм обновлениям...</span>
+      </div>
+      <div id="comments-list" class="mb-3"></div>
+
+      <div style="border-top:1px solid var(--border);padding-top:20px">
+        <h4 class="mb-2">Добавить рекомендацию</h4>
+        <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+          <button class="rec-type on-info" data-sev="info" onclick="setSev('info',this)">ℹ️ Информация</button>
+          <button class="rec-type" data-sev="normal" onclick="setSev('normal',this)">📋 Рекомендация</button>
+          <button class="rec-type" data-sev="critical" onclick="setSev('critical',this)">⚠️ Срочно</button>
+        </div>
+        <textarea id="rec-text" class="form-textarea" placeholder="Текст рекомендации..."></textarea>
+        <div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap">
+          <button class="btn btn-primary" onclick="sendRec()">💬 Отправить рекомендацию</button>
+          <button class="btn btn-danger" onclick="sendUrgent()">🏥 Рекомендовать очный приём</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="alert alert-info">
+      <span>⚖️</span>
+      <div><strong>Нормативные ограничения (ФЗ-323, ст. 36.2):</strong>
+      Раздел предназначен для наблюдения после первичного очного приёма. Первичная дистанционная диагностика не предусмотрена.</div>
+    </div>
+  </div>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="js/api.js?v=4"></script>
+<script>
+if (!requireRole(['doctor'])) throw 0;
+document.getElementById('nav').innerHTML = navbar('doctor');
+document.getElementById('doc-name').textContent = 'Д-р ' + Store.name();
+
+let PID = Store.selPid();
+let chart = null;
+let curSev = 'info';
+let connOpen = true;
+
+init();
+
+async function init() {
+  try {
+    const pats = await Api.myPatients();
+    if (pats && pats.length) {
+      renderPatList(pats);
+      if (!PID) PID = pats[0].id;
+      Store.set('sel_pid', PID);
+      const cur = pats.find(p=>p.id===PID)||pats[0];
+      selectPat(cur.id, cur.full_name);
+    }
+  } catch(e) { toast('Ошибка: '+e.message,'danger'); }
+}
+
+function renderPatList(pats) {
+  document.getElementById('pat-list').innerHTML = `
+    <div class="card mb-3">
+      <div class="card-header"><span class="card-title">👥 Мои пациенты</span></div>
+      ${pats.map(p=>`
+        <div style="display:flex;align-items:center;gap:12px;padding:10px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;cursor:pointer" onclick="selectPat('${p.id}','${p.full_name}')">
+          <span style="font-size:1.4rem">👴</span>
+          <div style="flex:1"><div style="font-weight:600">${p.full_name}</div>
+          <div style="font-size:.8rem;color:var(--text-muted)">Код: <span style="font-family:monospace">${p.id}</span></div></div>
+          <button class="btn btn-outline btn-sm">Открыть</button>
+        </div>`).join('')}
+    </div>`;
+}
+
+function selectPat(pid, name) {
+  PID = pid; Store.set('sel_pid', pid);
+  document.getElementById('data-sec').style.display = 'block';
+  document.getElementById('cbody').style.display = 'none';
+  document.getElementById('ctog').textContent = '+ Добавить пациента';
+  connOpen = false;
+  loadAll();
+  startSSE();
+}
+
+function toggleConnect() {
+  connOpen = !connOpen;
+  document.getElementById('cbody').style.display = connOpen?'block':'none';
+  document.getElementById('ctog').textContent = connOpen?'Свернуть':'+ Добавить пациента';
+}
+
+async function doConnect() {
+  const code = document.getElementById('ccode').value.trim();
+  if (!code) { toast('Введите код','warning'); return; }
+  try {
+    const r = await Api.connectPatient(code);
+    toast('✅ Подключено: '+r.patient_name,'success');
+    document.getElementById('ccode').value = '';
+    const pats = await Api.myPatients();
+    renderPatList(pats);
+    selectPat(r.patient_id, r.patient_name);
+  } catch(e) { toast(e.message,'danger'); }
+}
+
+function loadAll() {
+  if (!PID) return;
+  const days = parseInt(document.getElementById('period-sel').value);
+  loadStats(days);
+  loadComments();
+}
+
+async function loadStats(days) {
+  const sg = document.getElementById('sgrid');
+  sg.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+  try {
+    const s   = await Api.getStats(PID, days);
+    const bp  = s.bp  || {};
+    const adh = s.adherence || {};
+
+    // Critical alerts
+    const evs = await Api.getEvents(PID);
+    const crits = evs.filter(e=>e.severity==='critical'&&e.status==='new');
+    document.getElementById('crit-alerts').innerHTML = crits.map(e=>`
+      <div class="alert alert-danger mb-2" style="display:flex;align-items:flex-start;gap:12px">
+        <span>🚨</span>
+        <div style="flex:1"><strong>${e.message}</strong><div style="font-size:.8rem">${fmtDT(e.created_at)}</div></div>
+        <button class="btn btn-sm" style="background:var(--danger);color:#fff" onclick="markSeen('${e.id}',this)">Вижу</button>
+      </div>`).join('');
+
+    sg.innerHTML = [
+      {v:`${bp.avg_sys||'—'}/${bp.avg_dia||'—'}`, l:'Среднее давление', c:bp.avg_sys>150?'warning':''},
+      {v:bp.avg_pulse||'—', l:'Средний пульс', c:''},
+      {v:adh.pct!==null?adh.pct+'%':'—', l:'Приверженность', c:adh.pct<70?'danger':adh.pct<85?'warning':''},
+      {v:bp.critical||0, l:'Критических записей', c:bp.critical>0?'danger':''},
+      {v:bp.total||0, l:'Всего записей', c:''},
+      {v:adh.missed||0, l:'Пропущено приёмов', c:adh.missed>5?'danger':''},
+    ].map(x=>`<div class="stat-card ${x.c}"><div class="stat-value">${x.v}</div><div class="stat-label">${x.l}</div></div>`).join('');
+
+    drawChart(s.trend||[], s.patient);
+
+    // Complaints
+    const cEl = document.getElementById('complaints');
+    if (!s.complaints || !s.complaints.length) {
+      cEl.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted)">Жалоб не зафиксировано</div>';
+    } else {
+      cEl.innerHTML = s.complaints.map(c=>`
+        <div style="padding:8px 0;border-bottom:1px solid var(--border)">
+          <div style="font-size:.8rem;color:var(--text-muted)">${fmtDT(c.recorded_at)}</div>
+          <div>${c.note}</div>
+        </div>`).join('');
+    }
+  } catch(e) {
+    sg.innerHTML = `<div class="alert alert-danger" style="grid-column:1/-1">❌ ${e.message}</div>`;
+  }
+}
+
+function drawChart(trend, pat) {
+  const ctx = document.getElementById('bpc').getContext('2d');
+  if (chart) chart.destroy();
+  if (!trend.length) return;
+  const ds = [
+    {label:'Систолическое',data:trend.map(t=>t.sys),borderColor:'#D94F3D',tension:.4,borderWidth:2.5,pointRadius:3,fill:false},
+    {label:'Диастолическое',data:trend.map(t=>t.dia),borderColor:'#2E7D6E',tension:.4,borderWidth:2.5,pointRadius:3,fill:false},
+  ];
+  if (pat?.normal_systolic) {
+    ds.push({label:'Норма',data:trend.map(()=>pat.normal_systolic),borderColor:'#E6A817',borderDash:[4,4],borderWidth:1.5,pointRadius:0,fill:false});
+  }
+  chart = new Chart(ctx,{type:'line',
+    data:{labels:trend.map(t=>new Date(t.date).toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'})),datasets:ds},
+    options:{responsive:true,plugins:{legend:{position:'bottom'}},
+      scales:{y:{min:50,max:220,grid:{color:'rgba(0,0,0,.04)'}},x:{grid:{display:false}}}}});
+}
+
+async function loadComments() {
+  const el = document.getElementById('comments-list');
+  try {
+    const s = await Api.getStats(PID, 90);
+    if (!s.comments || !s.comments.length) {
+      el.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted)">Рекомендаций пока нет</div>';
+      return;
+    }
+    el.innerHTML = s.comments.map(c=>`
+      <div class="comm-item ${c.type}">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+          <span class="badge badge-${c.type==='urgent_visit'?'danger':c.type==='recommendation'?'warning':'info'}">
+            ${c.type==='urgent_visit'?'🏥 Очный приём':c.type==='recommendation'?'📋 Рекомендация':'💬 Комментарий'}
+          </span>
+          <span style="font-size:.8rem;color:var(--text-muted)">${c.author_name} • ${fmtDT(c.created_at)}</span>
+        </div>
+        <div>${c.content}</div>
+      </div>`).join('');
+  } catch(e) {}
+}
+
+function setSev(sev, btn) {
+  curSev = sev;
+  document.querySelectorAll('.rec-type').forEach(b=>b.className='rec-type');
+  btn.classList.add('on-'+sev);
+}
+
+async function sendRec() {
+  const txt = document.getElementById('rec-text').value.trim();
+  if (!txt) { toast('Введите текст рекомендации','warning'); return; }
+  try {
+    await Api.addComment(PID, {content:txt, type:'recommendation', severity:curSev});
+    toast('✅ Рекомендация отправлена','success');
+    document.getElementById('rec-text').value = '';
+    loadComments();
+  } catch(e) { toast(e.message,'danger'); }
+}
+
+async function sendUrgent() {
+  const reason = prompt('Укажите причину рекомендации очного приёма:');
+  if (!reason) return;
+  try {
+    await Api.addComment(PID, {content:reason, type:'urgent_visit', severity:'critical'});
+    toast('🏥 Рекомендация очного приёма отправлена','danger');
+    loadComments();
+  } catch(e) { toast(e.message,'danger'); }
+}
+
+// ============================================================
+// Реал-тайм обновления через Long Polling (надёжно в XAMPP)
+// ============================================================
+let rtLastId  = 0;
+let rtLastCid = 0;
+let rtActive  = false;
+
+function startSSE() {  // функция оставлена для совместимости
+  if (!PID || rtActive) return;
+  rtActive = true;
+  pollLoop();
+}
+
+async function pollLoop() {
+  const dot    = document.getElementById('rt-dot');
+  const status = document.getElementById('rt-status');
+  if (!PID) return;
+
+  dot.style.background    = '#2e7d6e';
+  status.textContent      = '● Реал-тайм активно';
+
+  while (rtActive && PID) {
+    try {
+      const data = await Api.poll(PID, rtLastId, rtLastCid);
+      if (data.last_id  > rtLastId)  rtLastId  = data.last_id;
+      if (data.last_cid > rtLastCid) rtLastCid = data.last_cid;
+
+      if (data.events && data.events.length) {
+        toast('🔔 ' + data.events[0].message, 'warning');
+        loadAll();
+      }
+      if (data.comments && data.comments.length) {
+        toast('💬 Новое сообщение от пациента', 'info');
+        loadComments();
+      }
+    } catch(e) {
+      dot.style.background = '#ccc';
+      status.textContent   = '○ Ожидание...';
+      await new Promise(r => setTimeout(r, 3000));
+      dot.style.background = '#2e7d6e';
+      status.textContent   = '● Реал-тайм активно';
+    }
+  }
+}
+
+// ============================================================
+// Экспорт PDF — HTML popup с кириллицей (работает везде)
+// ============================================================
+async function exportPDF() {
+  if (!PID) { toast('Сначала выберите пациента','warning'); return; }
+  toast('Подготавливаем отчёт...','info');
+  try {
+    const days    = parseInt(document.getElementById('period-sel').value);
+    const [stats, records] = await Promise.all([Api.getStats(PID, days), Api.getRecords(PID, days)]);
+    const bp  = stats.bp  || {};
+    const adh = stats.adherence || {};
+    const pat = stats.patient   || {};
+
+    const bpRows = (records||[]).slice(0,50).map(r => {
+      const cls = r.is_critical ? 'color:#d94f3d;font-weight:700' : r.is_warning ? 'color:#e6a817' : '';
+      const status = r.is_critical ? '⚠️ Критично' : r.is_warning ? '⬆️ Внимание' : '✓ Норма';
+      return `<tr>
+        <td>${fmtDT(r.recorded_at)}</td>
+        <td style="${cls}">${r.systolic||'—'}/${r.diastolic||'—'}</td>
+        <td>${r.pulse||'—'}</td>
+        <td style="${cls}">${status}</td>
+        <td>${r.note||''}</td>
+      </tr>`;
+    }).join('');
+
+    const commRows = (stats.comments||[]).slice(0,10).map((c,i) =>
+      `<tr><td>${i+1}</td><td>${fmtDT(c.created_at)}</td><td>${c.author_name||''}</td><td>${c.content||''}</td></tr>`
+    ).join('');
+
+    const html = `<!DOCTYPE html><html lang="ru"><head>
+<meta charset="UTF-8">
+<title>Медицинский отчёт — ЗаботаОнлайн</title>
+<style>
+  body{font-family:Arial,sans-serif;font-size:12px;color:#111;margin:20px}
+  h1{color:#1b5e50;font-size:20px;border-bottom:2px solid #2e7d6e;padding-bottom:8px}
+  h2{color:#2e7d6e;font-size:14px;margin-top:20px}
+  table{width:100%;border-collapse:collapse;margin-top:8px}
+  th{background:#2e7d6e;color:#fff;padding:6px 10px;text-align:left;font-size:11px}
+  td{padding:5px 10px;border-bottom:1px solid #e0e0e0;font-size:11px}
+  tr:nth-child(even) td{background:#f5faf9}
+  .meta{color:#666;font-size:11px;margin:4px 0}
+  .stat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:12px 0}
+  .stat-box{border:1px solid #ddd;border-radius:6px;padding:10px;text-align:center}
+  .stat-val{font-size:20px;font-weight:700;color:#2e7d6e}
+  .stat-lbl{font-size:10px;color:#888;margin-top:2px}
+  @media print{@page{margin:1.5cm}}
+</style></head><body>
+<h1>💚 ЗаботаОнлайн — Медицинский отчёт</h1>
+<div class="meta">Пациент: <strong>${pat.full_name||'—'}</strong></div>
+<div class="meta">Период: последние ${days} дней</div>
+<div class="meta">Дата формирования: ${new Date().toLocaleDateString('ru-RU')}</div>
+<div class="meta">Врач: ${Store.name()||'—'}</div>
+
+<h2>📊 Ключевые показатели</h2>
+<div class="stat-grid">
+  <div class="stat-box"><div class="stat-val">${bp.avg_sys||'—'}/${bp.avg_dia||'—'}</div><div class="stat-lbl">Среднее давление</div></div>
+  <div class="stat-box"><div class="stat-val">${adh.pct!==null?adh.pct+'%':'—'}</div><div class="stat-lbl">Приверженность терапии</div></div>
+  <div class="stat-box" style="${bp.critical>0?'border-color:#d94f3d':''}"><div class="stat-val" style="${bp.critical>0?'color:#d94f3d':''}">${bp.critical||0}</div><div class="stat-lbl">Критических эпизодов</div></div>
+  <div class="stat-box"><div class="stat-val">${bp.max_sys||'—'}</div><div class="stat-lbl">Макс. систолическое</div></div>
+  <div class="stat-box"><div class="stat-val">${adh.taken||0}</div><div class="stat-lbl">Принято лекарств</div></div>
+  <div class="stat-box"><div class="stat-val">${adh.missed||0}</div><div class="stat-lbl">Пропущено приёмов</div></div>
+</div>
+
+<h2>📋 История давления</h2>
+<table><thead><tr><th>Дата и время</th><th>АД (мм рт.ст.)</th><th>Пульс</th><th>Статус</th><th>Жалобы</th></tr></thead>
+<tbody>${bpRows||'<tr><td colspan="5" style="text-align:center">Нет данных</td></tr>'}</tbody></table>
+
+${commRows ? `<h2>💬 Рекомендации врача</h2>
+<table><thead><tr><th>#</th><th>Дата</th><th>Автор</th><th>Содержание</th></tr></thead>
+<tbody>${commRows}</tbody></table>` : ''}
+
+<p style="margin-top:24px;font-size:10px;color:#999;border-top:1px solid #ddd;padding-top:8px">
+Отчёт сформирован системой ЗаботаОнлайн. Данные используются только в целях медицинского наблюдения в соответствии с ФЗ-152.
+</p>
+</body></html>`;
+
+    const win = window.open('', '_blank', 'width=900,height=700');
+    win.document.write(html);
+    win.document.close();
+    win.onload = () => { win.focus(); win.print(); };
+    toast('Отчёт открыт — нажмите Ctrl+P или выберите "Печать" для сохранения в PDF','success');
+  } catch(e) { toast('Ошибка: '+e.message,'danger'); console.error(e); }
+}
+
+// ============================================================
+// Экспорт Excel (XLSX)
+// ============================================================
+async function exportExcel() {
+  if (!PID) { toast('Сначала выберите пациента','warning'); return; }
+  toast('Генерируем Excel...','info');
+  try {
+    const days    = parseInt(document.getElementById('period-sel').value);
+    const records = await Api.getRecords(PID, days);
+    const stats   = await Api.getStats(PID, days);
+
+    const wb = XLSX.utils.book_new();
+
+    // Лист 1: История давления
+    const bpData = (records||[]).map(r=>({
+      'Дата и время': new Date(r.recorded_at).toLocaleString('ru-RU'),
+      'Систолическое (мм рт.ст.)': r.systolic || '',
+      'Диастолическое (мм рт.ст.)': r.diastolic || '',
+      'Пульс (уд/мин)': r.pulse || '',
+      'Статус': r.is_critical?'Критично':r.is_warning?'Внимание':'Норма',
+      'Жалобы': r.note || '',
+    }));
+    const ws1 = XLSX.utils.json_to_sheet(bpData);
+    ws1['!cols'] = [{wch:20},{wch:22},{wch:22},{wch:16},{wch:12},{wch:30}];
+    XLSX.utils.book_append_sheet(wb, ws1, 'История давления');
+
+    // Лист 2: Статистика
+    const bp  = stats.bp  || {};
+    const adh = stats.adherence || {};
+    const statData = [
+      {Показатель:'Среднее систолическое', Значение: bp.avg_sys||'—'},
+      {Показатель:'Среднее диастолическое', Значение: bp.avg_dia||'—'},
+      {Показатель:'Средний пульс', Значение: bp.avg_pulse||'—'},
+      {Показатель:'Макс. систолическое', Значение: bp.max_sys||'—'},
+      {Показатель:'Критических эпизодов', Значение: bp.critical||0},
+      {Показатель:'Приверженность терапии, %', Значение: adh.pct!==null?adh.pct:'-'},
+      {Показатель:'Принято лекарств', Значение: adh.taken||0},
+      {Показатель:'Пропущено лекарств', Значение: adh.missed||0},
+    ];
+    const ws2 = XLSX.utils.json_to_sheet(statData);
+    ws2['!cols'] = [{wch:30},{wch:15}];
+    XLSX.utils.book_append_sheet(wb, ws2, 'Статистика');
+
+    // Лист 3: Рекомендации
+    if (stats.comments && stats.comments.length) {
+      const commData = stats.comments.map(c=>({
+        'Дата': new Date(c.created_at).toLocaleString('ru-RU'),
+        'Автор': c.author_name || '',
+        'Тип': {recommendation:'Рекомендация',urgent_visit:'Очный приём',comment:'Комментарий'}[c.type]||c.type,
+        'Содержание': c.content || '',
+      }));
+      const ws3 = XLSX.utils.json_to_sheet(commData);
+      ws3['!cols'] = [{wch:20},{wch:20},{wch:16},{wch:50}];
+      XLSX.utils.book_append_sheet(wb, ws3, 'Рекомендации');
+    }
+
+    XLSX.writeFile(wb, `eldercare_${new Date().toISOString().split('T')[0]}.xlsx`);
+    toast('Excel скачан!','success');
+  } catch(e) { toast('Ошибка Excel: '+e.message,'danger'); }
+}
+
+// ============================================================
+// Печать
+// ============================================================
+function printReport() {
+  window.print();
+}
+
+async function markSeen(eid, btn) {
+  try {
+    await Api.resolveEvent(eid);
+    btn?.closest('.alert')?.remove();
+  } catch(e) { toast(e.message,'danger'); }
+}
+</script>
+</body></html>
+
+<script>
+// Автообновление каждые 10 секунд
+function isUserBusy() {
+  if (document.querySelector('.overlay.open')) return true;
+  const a = document.activeElement;
+  return a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA');
+}
+setInterval(async function() {
+  if (!PID || isUserBusy()) return;
+  try { await loadAll(); } catch(e) {}
+}, 10000);
+</script>
+</body>
+</html>

@@ -1,0 +1,38 @@
+# База данных SQLite — содержит персональные данные пациентов
+# и журнал аудита; в репозиторий не выкладывается.
+backend/db/*.sqlite
+backend/db/*.sqlite-wal
+backend/db/*.sqlite-shm
+backend/db/*.db
+
+# Одноразовые миграционные / административные скрипты.
+# Они без авторизации и не должны попадать в публичный репозиторий.
+clear_audit.php
+migrate_encrypt.php
+
+# Локальная конфигурация (если когда-нибудь появится config.php
+# с реальными SMTP-паролями и JWT_SECRET — её сюда же).
+backend/config.php
+backend/config.local.php
+
+# IDE и редакторы
+.vscode/
+.idea/
+*.code-workspace
+*.sublime-project
+*.sublime-workspace
+
+# Windows / macOS системные файлы
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# Логи и временное
+*.log
+*.tmp
+*.bak
+~$*
+
+# PHP composer (если когда-нибудь появится)
+/vendor/
+composer.lock

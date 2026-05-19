@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Журнал действий — ЗаботаОнлайн</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<style>
+.page-header{background:linear-gradient(135deg,#1b5e50,#2e7d6e);padding:24px 0;margin-bottom:28px;}
+.page-header h1{color:#fff;font-size:1.6rem;margin-bottom:4px;}
+.page-header p{color:#fff;opacity:.85;margin:0;font-size:.9rem;}
+.log-table{width:100%;border-collapse:collapse;font-size:.9rem;}
+.log-table th{background:var(--bg);padding:10px 14px;text-align:left;font-weight:600;border-bottom:2px solid var(--border);white-space:nowrap;}
+.log-table td{padding:10px 14px;border-bottom:1px solid var(--border);vertical-align:middle;}
+.log-table tr:hover td{background:var(--success-light);}
+.act-CREATE{color:var(--primary);font-weight:600;}
+.act-READ  {color:var(--text-muted);}
+.act-UPDATE{color:var(--warning);}
+.act-DELETE{color:var(--danger);font-weight:600;}
+.act-LOGIN {color:#3730a3;font-weight:600;}
+.role-patient {background:var(--success-light);color:var(--primary);}
+.role-relative{background:#eef2ff;color:#3730a3;}
+.role-doctor  {background:var(--warning-light);color:#7a5500;}
+.role-badge-sm{padding:2px 8px;border-radius:10px;font-size:.75rem;font-weight:600;}
+</style>
+</head>
+<body>
+<div id="nav"></div>
+<div class="page-header">
+  <div class="container">
+    <h1>📋 Журнал действий</h1>
+    <p>Аудит всех операций в системе — требование ФЗ-152</p>
+  </div>
+</div>
+<main class="container" style="padding-bottom:40px">
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Последние действия</span>
+      <div style="display:flex;gap:8px">
+        <select id="limit-sel" class="form-select" style="width:auto" onchange="loadAudit()">
+          <option value="50">50 записей</option>
+          <option value="100">100 записей</option>
+          <option value="200">200 записей</option>
+        </select>
+        <button class="btn btn-outline btn-sm" onclick="loadAudit()">🔄 Обновить</button>
+      </div>
+    </div>
+    <div id="audit-content" style="overflow-x:auto">
+      <div class="loading"><div class="spinner"></div><span>Загрузка...</span></div>
+    </div>
+  </div>
+  <div class="alert alert-info mt-3" style="margin-top:16px">
+    <span>⚖️</span>
+    <div>Согласно ФЗ № 152-ФЗ «О персональных данных», все операции с персональными данными о здоровье подлежат обязательному журналированию. Логи хранятся в системе и недоступны для изменения пользователями.</div>
+  </div>
+</main>
+<script src="js/api.js?v=4"></script>
+<script>
+if (!requireRole(['doctor'])) throw 0;
+document.getElementById('nav').innerHTML = navbar('audit');
+loadAudit();
+
+async function loadAudit() {
+  const el    = document.getElementById('audit-content');
+  const limit = document.getElementById('limit-sel').value;
+  el.innerHTML = '<div class="loading"><div class="spinner"></div><span>Загрузка...</span></div>';
+  try {
+    const rows = await Api.getAudit(limit);
+    if (!rows || !rows.length) {
+      el.innerHTML = '<div style="text-align:center;padding:32px;color:var(--text-muted)">Журнал пуст</div>';
+      return;
+    }
+    const actLabels = {CREATE:'Создание',READ:'Просмотр',UPDATE:'Изменение',DELETE:'Удаление',LOGIN:'Вход'};
+    const entLabels = {users:'Пользователь',records:'Запись давления',medicines:'Лекарство',intakes:'Приём',events:'Событие',comments:'Комментарий',stats:'Статистика',access:'Доступ',audit:'Аудит'};
+    el.innerHTML = `<table class="log-table">
+      <thead><tr>
+        <th>Время</th><th>Пользователь</th><th>Роль</th><th>Действие</th><th>Объект</th><th>IP</th>
+      </tr></thead>
+      <tbody>${rows.map(r => {
+        const act  = r.action || '—';
+        const role = r.user_role || '';
+        return `<tr>
+          <td style="white-space:nowrap;color:var(--text-muted);font-size:.82rem">${fmtDT(r.ts)}</td>
+          <td style="font-weight:600">${r.full_name || 'Система'}</td>
+          <td><span class="role-badge-sm role-${role}">${{patient:'Пациент',relative:'Родственник',doctor:'Врач'}[role]||role}</span></td>
+          <td><span class="act-${act}">${actLabels[act]||act}</span></td>
+          <td>${entLabels[r.entity]||r.entity}${r.entity_id?`<div style="font-size:.75rem;color:var(--text-muted);font-family:monospace">${r.entity_id.slice(0,8)}...</div>`:''}</td>
+          <td style="font-size:.8rem;color:var(--text-muted)">${r.ip||'—'}</td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table>`;
+  } catch(e) { el.innerHTML = `<div class="alert alert-danger">❌ ${e.message}</div>`; }
+}
+</script>
+</body>
+</html>
